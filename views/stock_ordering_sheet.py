@@ -133,7 +133,7 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
     ]]
 
     # --- Transaction Records (Latest PO) ---
-    original_df["Transaction Date"] = pd.to_datetime(original_df["Transaction Date"], errors="coerce")
+    original_df["Transaction Date"] = pd.to_datetime(original_df["Transaction Date"], dayfirst=True, errors="coerce")
     filtered_df = original_df.dropna(subset=["Product Code", "Transaction Date"])
     latest_dates = filtered_df.groupby("Product Code")["Transaction Date"].max().reset_index()
     latest_orders = pd.merge(filtered_df, latest_dates, on=["Product Code", "Transaction Date"], how="inner")

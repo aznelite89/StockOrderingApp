@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-02
+
+### Fixed
+- Last PO Date/Qty now parse Unleashed dates as day-first (DD/MM/YYYY), so POs dated after the 12th are no longer dropped and the most-recent transaction is reported.
+
 ## 2026-05-27
 
 ### Fixed
