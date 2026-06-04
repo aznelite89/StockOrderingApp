@@ -380,7 +380,7 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
                         For i = 2 To lastRow  ' Start from row 2 (skip header)
                             ' Check if this row matches our supplier and has quantity > 0
                             If UCase(mainWs.Cells(i, "B").Value) = UCase(supplierCode) And _
-                            mainWs.Cells(i, "U").Value > 0 Then
+                            IsNumeric(mainWs.Cells(i, "T").Value) And mainWs.Cells(i, "T").Value > 0 Then
 
                                 ' Line no.
                                 ws.Cells(dataRow, 1).Value = lineNo
@@ -401,18 +401,18 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
                                     ws.Cells(dataRow, 5).Value = mainWs.Cells(i, "E").Value
                                 End If
 
-                                ' Qty (pcs) - Get from Searay Order column (U)
-                                ws.Cells(dataRow, 6).Value = mainWs.Cells(i, "U").Value
+                                ' Qty (pcs) - Get from Need To Order column (T)
+                                ws.Cells(dataRow, 6).Value = mainWs.Cells(i, "T").Value
 
                                 ' Total Weight (Weight * Qty if both are numeric)
-                                If IsNumeric(mainWs.Cells(i, "E").Value) And IsNumeric(mainWs.Cells(i, "U").Value) Then
-                                    ws.Cells(dataRow, 7).Value = mainWs.Cells(i, "E").Value * mainWs.Cells(i, "U").Value
+                                If IsNumeric(mainWs.Cells(i, "E").Value) And IsNumeric(mainWs.Cells(i, "T").Value) Then
+                                    ws.Cells(dataRow, 7).Value = mainWs.Cells(i, "E").Value * mainWs.Cells(i, "T").Value
                                 Else
                                     ws.Cells(dataRow, 7).Value = ""
                                 End If
 
-                                ' Notes (empty for user input)
-                                ws.Cells(dataRow, 8).Value = mainWs.Cells(i, "V").Value
+                                ' Notes - Get from Comments column (W)
+                                ws.Cells(dataRow, 8).Value = mainWs.Cells(i, "W").Value
 
                                 dataRow = dataRow + 1
                                 lineNo = lineNo + 1

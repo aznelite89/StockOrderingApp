@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-04
+
+### Fixed
+- `ProcessOrderMacro` now reads the order quantity from column `T` (Need To Order) and notes from `W` (Comments); it previously read `U` (Base Unit), so "Qty (pcs)" showed "Each" and Total Weight came out blank. Filter now requires a numeric `T > 0`.
+
 ## 2026-06-02
 
 ### Fixed
