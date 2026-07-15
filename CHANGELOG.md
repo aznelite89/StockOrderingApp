@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-15
+
+### Fixed
+- Uploading a Windows-1252/Excel CSV export no longer crashes with `UnicodeDecodeError` (byte 0x93); CSV reads now try utf-8-sig, then cp1252, then latin-1 via `utils/csv_loader.read_csv_bytes`.
+
 ## 2026-06-04
 
 ### Fixed

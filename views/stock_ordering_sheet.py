@@ -4,6 +4,8 @@ import io
 import streamlit as st
 from datetime import datetime
 
+from utils.csv_loader import read_csv_bytes
+
 st.set_page_config(page_title="UNL Order Sheet Generator v4.8", layout="wide")
 st.title("UNL Order Sheet Generator v4.8")
 
@@ -97,12 +99,12 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
     Cached on file bytes + coverage weeks, so editing the supplier text input doesn't
     re-read or re-merge the inputs.
     """
-    product_df   = pd.read_csv(io.BytesIO(po_prod_bytes),   skiprows=1)
-    sales_df     = pd.read_csv(io.BytesIO(po_sales_bytes),  skiprows=1)
-    warehouse_df = pd.read_csv(io.BytesIO(warehouse_bytes))
-    plist_df     = pd.read_csv(io.BytesIO(plist_bytes))
-    original_df  = pd.read_csv(io.BytesIO(original_bytes),  skiprows=1)
-    special_df   = pd.read_csv(io.BytesIO(special_bytes),   skiprows=1)
+    product_df   = read_csv_bytes(po_prod_bytes,   skiprows=1)
+    sales_df     = read_csv_bytes(po_sales_bytes,  skiprows=1)
+    warehouse_df = read_csv_bytes(warehouse_bytes)
+    plist_df     = read_csv_bytes(plist_bytes)
+    original_df  = read_csv_bytes(original_bytes,  skiprows=1)
+    special_df   = read_csv_bytes(special_bytes,   skiprows=1)
 
     # --- On Hand ---
     warehouse_df = warehouse_df.rename(columns={"*Product Code": "Product Code", "*SOH": "SOH"})
