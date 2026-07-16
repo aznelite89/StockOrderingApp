@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-16
+
+### Fixed
+- `ProcessOrderMacro` now pulls the order quantity (and include filter and Total Weight) from column `V` (Searay Order) instead of `T` (Need To Order), so the supplier PO form reflects the hand-entered "Searay Order" quantities rather than the system suggestion.
+
 ## 2026-07-15
 
 ### Fixed
