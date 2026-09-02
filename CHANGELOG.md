@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-02
+
+### Added
+- Rows for products flagged not purchasable in Unleashed (`Is Purchasable = No` in the Product List export) are highlighted red on `UNL_Order_Sheet` and every `<SUPPLIER>_ALL` tab, with a new `UNL Purchasable` column (Z) and a `Calculation_Logic` entry.
+- Preview shows a count of not-purchasable products and a red/yellow legend.
+- `constants/order_sheet.py` for Product List column names, YES/NO values, and highlight colours.
+
+### Changed
+- Version bumped to v4.9.
+- Red (not purchasable) takes precedence over yellow (special order) when a row qualifies for both.
+- Sample Data Format tab 4 now includes the `Is Purchasable` column.
+
 ## 2026-07-16
 
 ### Fixed

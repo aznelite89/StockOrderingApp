@@ -5,9 +5,12 @@ import streamlit as st
 from datetime import datetime
 
 from utils.csv_loader import read_csv_bytes
+from constants.order_sheet import (
+    PlistColumn, OutputColumn, YesNo, UNLEASHED_FALSE_VALUES, HighlightColor,
+)
 
-st.set_page_config(page_title="UNL Order Sheet Generator v4.8", layout="wide")
-st.title("UNL Order Sheet Generator v4.8")
+st.set_page_config(page_title="UNL Order Sheet Generator v4.9", layout="wide")
+st.title("UNL Order Sheet Generator v4.9")
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +60,7 @@ def _build_sample_xlsx() -> bytes:
         # Tab 4: Product List
         product_list_data = pd.DataFrame({
             '*Product Code': [], '*Product Description': [], 'Barcode': [], '...': [],
-            'Default Purchasing Unit of Measure': [], 'Is Batch Tracked': [],
+            'Is Purchasable': [], 'Default Purchasing Unit of Measure': [], 'Is Batch Tracked': [],
         })
         product_list_data.to_excel(writer, sheet_name='4_Product_List', index=False)
         worksheet = writer.sheets['4_Product_List']
@@ -146,8 +149,15 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
         "Quantity": "Last PO Qty",
     })
 
-    # --- Weight Info ---
-    weight_df = plist_df.rename(columns={"*Product Code": "Product Code"})[["Product Code", "Weight"]]
+    # --- Weight + Unleashed "Purchasable" flag ---
+    plist_df = plist_df.rename(columns={PlistColumn.PRODUCT_CODE: OutputColumn.PRODUCT_CODE})
+    if PlistColumn.IS_PURCHASABLE in plist_df.columns:
+        is_off = plist_df[PlistColumn.IS_PURCHASABLE].astype(str).str.strip().str.lower().isin(UNLEASHED_FALSE_VALUES)
+        plist_df[OutputColumn.UNL_PURCHASABLE] = is_off.map({True: YesNo.NO, False: YesNo.YES})
+    else:
+        # Older export layout without the flag: assume purchasable so nothing is wrongly flagged red.
+        plist_df[OutputColumn.UNL_PURCHASABLE] = YesNo.YES
+    weight_df = plist_df[[OutputColumn.PRODUCT_CODE, PlistColumn.WEIGHT, OutputColumn.UNL_PURCHASABLE]]
 
     # --- Special Order ---
     special_ProductCode = special_df["Product Code"].unique()
@@ -189,6 +199,7 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
         "Last PO Qty": 0, "Last PO Date": "N/A",
         "Weight": "N/A", "Obsolete": "NO",
         "Customer Allocations": "N/A", "Allocated Qty": 0,
+        OutputColumn.UNL_PURCHASABLE: YesNo.YES,
     }, inplace=True)
 
     # --- Inventory Logic ---
@@ -225,6 +236,7 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
         "Target Stock Qty", "Need To Order",
         "Base Unit", "Searay Order", "Comments",
         "Obsolete", "Purchaseable",
+        OutputColumn.UNL_PURCHASABLE,  # column Z — keep last so VBA column letters A..W stay valid
     ]
     df = df[final_cols]
 
@@ -245,6 +257,32 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
     df.fillna("N/A", inplace=True)
 
     return df, tuple(special_ProductCode)
+
+
+def _write_highlighted_rows(worksheet, frame: pd.DataFrame, special_set: set, formats: dict) -> None:
+    """Write `frame` rows (from row 1) with Product Code hyperlinks and row highlighting.
+
+    Red (not purchasable in Unleashed) takes precedence over yellow (special order),
+    because the point of red is "do not reorder this piece".
+    """
+    code_col = frame.columns.get_loc(OutputColumn.PRODUCT_CODE)
+    purch_col = frame.columns.get_loc(OutputColumn.UNL_PURCHASABLE)
+    for row_num, row in enumerate(frame.itertuples(index=False, name=None), start=1):
+        product_code = row[code_col]
+        if row[purch_col] == YesNo.NO:
+            url_fmt, cell_fmt = formats['red_url'], formats['red']
+        elif product_code in special_set:
+            url_fmt, cell_fmt = formats['special_url'], formats['special']
+        else:
+            url_fmt, cell_fmt = formats['url'], None
+        for col_num, value in enumerate(row):
+            if col_num == code_col:
+                url = f"https://searay.net.au/search?q={product_code}&options%5Bprefix%5D=last"
+                worksheet.write_url(row_num, col_num, url, url_fmt, string=str(product_code))
+            elif cell_fmt is not None:
+                worksheet.write(row_num, col_num, value, cell_fmt)
+            else:
+                worksheet.write(row_num, col_num, value)
 
 
 def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tuple) -> bytes:
@@ -269,6 +307,7 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
         ["Weight", "From Product List"],
         ["Obsolete", "From PO Product Data"],
         ["Purchaseable", "NO if Obsolete is YES or Average Weekly Sales == 0, else YES"],
+        ["UNL Purchasable", "From Product List 'Is Purchasable' flag in Unleashed. Rows where this is NO are highlighted RED - do not reorder"],
         ["Product Data", "Unleased PO Product Data (Inventory>View Products>Grid Layout: PO Product Data>Export to CSV"],
         ["Sales Data", "Unleased Sales Data (Reports>Sales>Unit Sales Enquiry>Grid Layout: Searay>Export to CSV) Make sure \"Date To\" is set to your latest month. Date From will automatically populate (12m)"],
         ["Warehouse Data", "Warehouse Data (Inventory > Products > Import/Export > Stock on Hand)"],
@@ -286,8 +325,14 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
         # Hoisted formats — created once and reused across every row/sheet.
         url_format         = workbook.add_format({'font_color': 'blue', 'underline': 1})
         header_format      = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3'})
-        yellow_highlight   = workbook.add_format({'bg_color': '#FFFF00'})
-        special_url_format = workbook.add_format({'font_color': 'blue', 'underline': 1, 'bg_color': '#FFFF00'})
+        yellow_highlight   = workbook.add_format({'bg_color': HighlightColor.SPECIAL_ORDER_BG})
+        special_url_format = workbook.add_format({'font_color': 'blue', 'underline': 1, 'bg_color': HighlightColor.SPECIAL_ORDER_BG})
+        red_highlight      = workbook.add_format({'bg_color': HighlightColor.NOT_PURCHASABLE_BG, 'font_color': HighlightColor.NOT_PURCHASABLE_FONT})
+        red_url_format     = workbook.add_format({'font_color': 'blue', 'underline': 1, 'bg_color': HighlightColor.NOT_PURCHASABLE_BG})
+        row_formats = {
+            'url': url_format, 'special_url': special_url_format, 'special': yellow_highlight,
+            'red_url': red_url_format, 'red': red_highlight,
+        }
         button_format      = workbook.add_format({
             'bold': True, 'font_color': 'white', 'bg_color': '#4CAF50',
             'border': 2, 'border_color': '#2E7D32',
@@ -301,20 +346,7 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
         main_worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
         main_worksheet.freeze_panes(1, 0)
 
-        main_code_col = df.columns.get_loc("Product Code")
-        for row_num, (_index, row) in enumerate(df.iterrows(), start=1):
-            product_code = row["Product Code"]
-            is_special = product_code in special_set
-            for col_num, value in enumerate(row):
-                if col_num == main_code_col:
-                    url = f"https://searay.net.au/search?q={product_code}&options%5Bprefix%5D=last"
-                    fmt = special_url_format if is_special else url_format
-                    main_worksheet.write_url(row_num, col_num, url, fmt, string=str(product_code))
-                else:
-                    if is_special:
-                        main_worksheet.write(row_num, col_num, value, yellow_highlight)
-                    else:
-                        main_worksheet.write(row_num, col_num, value)
+        _write_highlighted_rows(main_worksheet, df, special_set, row_formats)
 
         # --- Supplier tabs ---
         if supplier_input.strip():
@@ -464,20 +496,7 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
                 all_products_worksheet.autofilter(0, 0, len(supplier_df_full), len(supplier_df_full.columns) - 1)
                 all_products_worksheet.freeze_panes(1, 0)
 
-                code_col = supplier_df_full.columns.get_loc("Product Code")
-                for row_num, (_index, row) in enumerate(supplier_df_full.iterrows(), start=1):
-                    product_code = row["Product Code"]
-                    is_special = product_code in special_set
-                    for col_num, value in enumerate(row):
-                        if col_num == code_col:
-                            url = f"https://searay.net.au/search?q={product_code}&options%5Bprefix%5D=last"
-                            fmt = special_url_format if is_special else url_format
-                            all_products_worksheet.write_url(row_num, col_num, url, fmt, string=str(product_code))
-                        else:
-                            if is_special:
-                                all_products_worksheet.write(row_num, col_num, value, yellow_highlight)
-                            else:
-                                all_products_worksheet.write(row_num, col_num, value)
+                _write_highlighted_rows(all_products_worksheet, supplier_df_full, special_set, row_formats)
 
         # --- Calculation logic reference ---
         logic_df.to_excel(writer, sheet_name='Calculation_Logic', index=False)
@@ -516,7 +535,7 @@ st.header("Upload Data Files")
 po_prod_file   = st.file_uploader("1) PO Product Data", type=["csv"])
 po_sales_file  = st.file_uploader("2) PO Sales Data", type=["csv"])
 warehouse_file = st.file_uploader("3) Warehouse Data", type=["csv"])
-plist_file     = st.file_uploader("4) Product List (for Weight info)", type=["csv"])
+plist_file     = st.file_uploader("4) Product List (for Weight + Purchasable flag)", type=["csv"])
 original_file  = st.file_uploader("5) Transaction Detail (Original) File", type=["csv"])
 special_file   = st.file_uploader("6) Special Order File", type=["csv"])
 
@@ -533,6 +552,12 @@ if all([po_prod_file, po_sales_file, warehouse_file, original_file, plist_file, 
         )
 
     st.success("✅ UNL Order Sheet Generated Successfully")
+    not_purchasable_count = int((df[OutputColumn.UNL_PURCHASABLE] == YesNo.NO).sum())
+    st.caption(
+        f"🟥 {not_purchasable_count} product(s) are marked **not purchasable** in Unleashed "
+        f"(`{OutputColumn.UNL_PURCHASABLE}` = NO). They are highlighted red in the Excel output — do not reorder. "
+        "🟨 Yellow = special order."
+    )
     st.dataframe(df)
 
     # --- Supplier Filter ---
