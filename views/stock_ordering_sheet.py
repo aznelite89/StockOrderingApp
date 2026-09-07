@@ -5,12 +5,13 @@ import streamlit as st
 from datetime import datetime
 
 from utils.csv_loader import read_csv_bytes
+from utils.unleashed_flags import unleashed_flag_to_yesno
 from constants.order_sheet import (
-    PlistColumn, OutputColumn, YesNo, UNLEASHED_FALSE_VALUES, HighlightColor,
+    PlistColumn, PoProductColumn, OutputColumn, YesNo, UNLEASHED_FALSE_VALUES, HighlightColor,
 )
 
-st.set_page_config(page_title="UNL Order Sheet Generator v4.9", layout="wide")
-st.title("UNL Order Sheet Generator v4.9")
+st.set_page_config(page_title="UNL Order Sheet Generator v4.10", layout="wide")
+st.title("UNL Order Sheet Generator v4.10")
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +135,10 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
     # --- Static Info ---
     static_df = product_df.rename(columns={"Supplier Product Description": "Supplier Description"})[[
         "Product Code", "Supplier Code", "Supplier Product Code", "Supplier Description",
-        "Product Group", "Bin Location", "Base Unit", "Obsolete"
-    ]]
+        "Product Group", "Bin Location", "Base Unit", PoProductColumn.OBSOLETE
+    ]].copy()
+    # Unleashed exports Obsolete as True/False; normalise so the YES check below works.
+    static_df[OutputColumn.OBSOLETE] = unleashed_flag_to_yesno(static_df[PoProductColumn.OBSOLETE])
 
     # --- Transaction Records (Latest PO) ---
     original_df["Transaction Date"] = pd.to_datetime(original_df["Transaction Date"], dayfirst=True, errors="coerce")
@@ -197,7 +200,7 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
         "On Hand": 0, "On Purchase Order": 0, "Allocated": 0,
         "Total Sales": 0, "3m Sales": 0, "Average Weekly Sales (3m)": 0,
         "Last PO Qty": 0, "Last PO Date": "N/A",
-        "Weight": "N/A", "Obsolete": "NO",
+        "Weight": "N/A", OutputColumn.OBSOLETE: YesNo.NO,
         "Customer Allocations": "N/A", "Allocated Qty": 0,
         OutputColumn.UNL_PURCHASABLE: YesNo.YES,
     }, inplace=True)
@@ -224,7 +227,7 @@ def _load_and_process(po_prod_bytes: bytes, po_sales_bytes: bytes, warehouse_byt
     df["Searay Order"] = ""
     df["Comments"] = ""
     df["Purchaseable"] = df.apply(
-        lambda r: "NO" if r["Obsolete"] == "YES" or r["Average Weekly Sales"] == 0 else "YES",
+        lambda r: YesNo.NO if r[OutputColumn.OBSOLETE] == YesNo.YES or r["Average Weekly Sales"] == 0 else YesNo.YES,
         axis=1,
     )
 
@@ -305,7 +308,7 @@ def _build_excel(df: pd.DataFrame, supplier_input: str, special_ProductCode: tup
         ["Searay Order", "Based on Base Unit, if each then round up, if weight then round to 3 decimal places"],
         ["Last PO Date / Qty", "From Transaction Detail, get the latest purchase date and quantity"],
         ["Weight", "From Product List"],
-        ["Obsolete", "From PO Product Data"],
+        ["Obsolete", "From PO Product Data (True/False normalised to YES/NO)"],
         ["Purchaseable", "NO if Obsolete is YES or Average Weekly Sales == 0, else YES"],
         ["UNL Purchasable", "From Product List 'Is Purchasable' flag in Unleashed. Rows where this is NO are highlighted RED - do not reorder"],
         ["Product Data", "Unleased PO Product Data (Inventory>View Products>Grid Layout: PO Product Data>Export to CSV"],

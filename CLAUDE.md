@@ -45,6 +45,8 @@ Searay Order qty   = ceil(Need) if Base Unit == "each", round(Need, 3) if "weigh
 Purchaseable       = "NO" if Obsolete == "YES" or Average Weekly Sales == 0 else "YES"
 ```
 
+`Obsolete` arrives from Unleashed as `True`/`False` and is normalised to YES/NO via `utils/unleashed_flags.py` before the `Purchaseable` check (before 2026-09-07 the raw `True` never matched, so obsolete products were never flagged).
+
 Note the inconsistency: `Average Weekly Sales (3m)` is `3m Sales / 12` in code (`app.py:194`) but the `Calculation_Logic` sheet documents it as `/13`. Don't "fix" one without confirming intent.
 
 Rows are then re-sorted so that products sharing a `Bin Location` stay together, with bins ordered by the highest `Need To Order` they contain (see the `seen_bins` / `seen_products` loop around `app.py:319`). Don't replace this with a plain `sort_values` — bin grouping is intentional for picking workflow.
@@ -61,5 +63,5 @@ Rows are then re-sorted so that products sharing a `Bin Location` stay together,
 
 - `app copy.py` is a backup snapshot, not an import target. Leave it alone unless asked.
 - Streamlit reruns the whole script on every widget change; the `if all([...])` gate at `app.py:168` is what prevents work until all six files are uploaded.
-- The version string is embedded twice (page title and H1, both `v4.9`); bump both together if releasing a new version.
+- The version string is embedded twice (page title and H1, both `v4.10`); bump both together if releasing a new version.
 - Column names, YES/NO values and highlight colours for the order sheet live in `constants/order_sheet.py`; don't add new raw string literals for these in the view.

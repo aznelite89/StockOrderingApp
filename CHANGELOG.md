@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-07
+
+### Fixed
+- `Purchaseable` now recognises obsolete products: Unleashed exports `Obsolete` as True/False, but the check only matched `YES`, so obsolete products were never flagged NO.
+
+### Changed
+- Version bumped to v4.10.
+- `Obsolete` column on the order sheet now shows YES/NO instead of True/False.
+
 ## 2026-09-02
 
 ### Added
